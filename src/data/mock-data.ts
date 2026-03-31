@@ -1,33 +1,5 @@
 import { LegalEntity, ServiceRequest } from "@/types";
 
-const OBLASTS: { name: string; lat: number; lng: number; cities: string[] }[] = [
-  { name: "Вінницька", lat: 49.23, lng: 28.47, cities: ["Вінниця", "Жмеринка", "Козятин", "Хмільник"] },
-  { name: "Волинська", lat: 50.75, lng: 25.32, cities: ["Луцьк", "Ковель", "Нововолинськ", "Володимир"] },
-  { name: "Дніпропетровська", lat: 48.46, lng: 35.04, cities: ["Дніпро", "Кривий Ріг", "Кам'янське", "Нікополь", "Павлоград"] },
-  { name: "Донецька", lat: 48.0, lng: 37.8, cities: ["Краматорськ", "Маріуполь", "Слов'янськ", "Покровськ"] },
-  { name: "Житомирська", lat: 50.26, lng: 28.66, cities: ["Житомир", "Бердичів", "Коростень", "Новоград-Волинський"] },
-  { name: "Закарпатська", lat: 48.62, lng: 22.29, cities: ["Ужгород", "Мукачево", "Хуст", "Берегове"] },
-  { name: "Запорізька", lat: 47.84, lng: 35.14, cities: ["Запоріжжя", "Мелітополь", "Бердянськ", "Енергодар"] },
-  { name: "Івано-Франківська", lat: 48.92, lng: 24.71, cities: ["Івано-Франківськ", "Калуш", "Коломия", "Надвірна"] },
-  { name: "Київська", lat: 50.45, lng: 30.52, cities: ["Біла Церква", "Бровари", "Бориспіль", "Ірпінь", "Буча"] },
-  { name: "Кіровоградська", lat: 48.51, lng: 32.26, cities: ["Кропивницький", "Олександрія", "Знам'янка"] },
-  { name: "Луганська", lat: 48.57, lng: 39.31, cities: ["Сєвєродонецьк", "Лисичанськ", "Рубіжне"] },
-  { name: "Львівська", lat: 49.84, lng: 24.03, cities: ["Львів", "Дрогобич", "Стрий", "Червоноград", "Самбір"] },
-  { name: "Миколаївська", lat: 46.97, lng: 32.0, cities: ["Миколаїв", "Первомайськ", "Вознесенськ"] },
-  { name: "Одеська", lat: 46.48, lng: 30.73, cities: ["Одеса", "Ізмаїл", "Чорноморськ", "Южне", "Білгород-Дністровський"] },
-  { name: "Полтавська", lat: 49.59, lng: 34.55, cities: ["Полтава", "Кременчук", "Горішні Плавні", "Лубни"] },
-  { name: "Рівненська", lat: 50.62, lng: 26.25, cities: ["Рівне", "Дубно", "Вараш", "Острог"] },
-  { name: "Сумська", lat: 50.91, lng: 34.8, cities: ["Суми", "Конотоп", "Шостка", "Охтирка"] },
-  { name: "Тернопільська", lat: 49.55, lng: 25.59, cities: ["Тернопіль", "Чортків", "Кременець"] },
-  { name: "Харківська", lat: 49.99, lng: 36.23, cities: ["Харків", "Лозова", "Ізюм", "Чугуїв"] },
-  { name: "Херсонська", lat: 46.64, lng: 32.62, cities: ["Херсон", "Нова Каховка", "Каховка"] },
-  { name: "Хмельницька", lat: 49.42, lng: 27.0, cities: ["Хмельницький", "Кам'янець-Подільський", "Шепетівка"] },
-  { name: "Черкаська", lat: 49.44, lng: 32.06, cities: ["Черкаси", "Умань", "Сміла", "Золотоноша"] },
-  { name: "Чернівецька", lat: 48.29, lng: 25.94, cities: ["Чернівці", "Новодністровськ", "Сторожинець"] },
-  { name: "Чернігівська", lat: 51.49, lng: 31.29, cities: ["Чернігів", "Ніжин", "Прилуки"] },
-  { name: "м. Київ", lat: 50.45, lng: 30.52, cities: ["Київ"] },
-];
-
 const SPECIALITIES = [
   "Сімейна медицина", "Терапія", "Педіатрія", "Хірургія", "Кардіологія",
   "Неврологія", "Ендокринологія", "Офтальмологія", "Отоларингологія",
@@ -88,7 +60,6 @@ const SERVICES: Record<string, { code: string; name: string }[]> = {
 const AGE_GROUPS = ["y06-17", "y18-39", "y40-64", "y65+"];
 const GENDERS = ["Жіноча", "Чоловіча"];
 const PRIORITIES = ["Планове", "Ургентне"];
-const FACILITY_TYPES = ["Первинна ланка", "Вторинна ланка", "Третинна ланка"];
 const PERIODS = [
   "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
   "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12",
@@ -103,71 +74,25 @@ function seededRandom(seed: number) {
   };
 }
 
-function uuid(rand: () => number): string {
-  const hex = "0123456789abcdef";
-  let result = "";
-  for (let i = 0; i < 36; i++) {
-    if (i === 8 || i === 13 || i === 18 || i === 23) {
-      result += "-";
-    } else if (i === 14) {
-      result += "4";
-    } else {
-      result += hex[Math.floor(rand() * 16)];
-    }
-  }
-  return result;
-}
-
 function pick<T>(arr: T[], rand: () => number): T {
   return arr[Math.floor(rand() * arr.length)];
 }
 
-function generateEdrpou(rand: () => number): string {
-  let result = "";
-  for (let i = 0; i < 8; i++) {
-    result += Math.floor(rand() * 10).toString();
-  }
-  return result;
-}
-
-export function generateMockData(): {
-  legalEntities: LegalEntity[];
-  serviceRequests: ServiceRequest[];
-} {
+/**
+ * Generate mock service requests using real facilities.
+ * Real facilities come from the parsed CSV; service requests are synthetic.
+ */
+export function generateServiceRequests(facilities: LegalEntity[]): ServiceRequest[] {
   const rand = seededRandom(42);
-  const legalEntities: LegalEntity[] = [];
-
-  // Generate ~500 facilities across Ukraine
-  for (const oblast of OBLASTS) {
-    const facilitiesCount = oblast.name === "м. Київ" ? 40 :
-      oblast.name === "Дніпропетровська" || oblast.name === "Харківська" || oblast.name === "Львівська" || oblast.name === "Одеська" ? 30 :
-      Math.floor(12 + rand() * 15);
-
-    for (let i = 0; i < facilitiesCount; i++) {
-      const city = pick(oblast.cities, rand);
-      const latOffset = (rand() - 0.5) * 1.2;
-      const lngOffset = (rand() - 0.5) * 1.5;
-
-      legalEntities.push({
-        id: uuid(rand),
-        name: `${pick(["КНП", "ТОВ", "КП", "ПП"], rand)} "${pick(["Міська лікарня", "Поліклініка", "Діагностичний центр", "Медичний центр", "Районна лікарня", "Обласна клінічна лікарня", "Клініка", "Центр ПМСД"], rand)} №${Math.floor(rand() * 20 + 1)}" ${city}`,
-        edrpou: generateEdrpou(rand),
-        type: pick(FACILITY_TYPES, rand),
-        address: `${city}, вул. ${pick(["Шевченка", "Франка", "Лесі Українки", "Грушевського", "Соборна", "Незалежності", "Миру", "Перемоги", "Центральна", "Героїв"], rand)}, ${Math.floor(rand() * 150 + 1)}`,
-        oblast: oblast.name,
-        city,
-        latitude: oblast.lat + latOffset,
-        longitude: oblast.lng + lngOffset,
-        status: rand() > 0.05 ? "ACTIVE" : "CLOSED",
-      });
-    }
-  }
-
-  // Generate service requests
   const serviceRequests: ServiceRequest[] = [];
-  const activeFacilities = legalEntities.filter(e => e.status === "ACTIVE");
+  const activeFacilities = facilities.filter(e => e.status === "ACTIVE");
 
-  for (let i = 0; i < 15000; i++) {
+  if (activeFacilities.length === 0) return [];
+
+  // Generate ~20000 service request records across all real facilities
+  const count = Math.min(activeFacilities.length * 5, 25000);
+
+  for (let i = 0; i < count; i++) {
     const category = pick(CATEGORIES, rand);
     const service = pick(SERVICES[category], rand);
     const requester = pick(activeFacilities, rand);
@@ -198,7 +123,7 @@ export function generateMockData(): {
     });
   }
 
-  return { legalEntities, serviceRequests };
+  return serviceRequests;
 }
 
 export { SPECIALITIES, CATEGORIES, SERVICES, AGE_GROUPS, GENDERS, PRIORITIES, PERIODS };

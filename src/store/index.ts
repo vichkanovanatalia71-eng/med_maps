@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { Filters, MapMode, EnrichedFacility, LegalEntity, ServiceRequest } from "@/types";
 import { enrichFacilities, getAggregateStats, aggregateByOblast, getAvailableServices } from "@/lib/data-processing";
-import { generateMockData, PERIODS } from "@/data/mock-data";
+import { generateServiceRequests, PERIODS } from "@/data/mock-data";
+import { parseRealFacilities } from "@/data/parse-facilities";
 
 interface AppState {
   // Raw data
@@ -21,7 +22,7 @@ interface AppState {
   isLoaded: boolean;
 
   // Actions
-  initialize: () => void;
+  initialize: () => Promise<void>;
   setMapMode: (mode: MapMode) => void;
   toggleSidebar: () => void;
   setFilter: <K extends keyof Filters>(key: K, value: Filters[K]) => void;
@@ -60,8 +61,15 @@ export const useStore = create<AppState>((set, get) => ({
   filters: { ...defaultFilters },
   isLoaded: false,
 
-  initialize: () => {
-    const { legalEntities, serviceRequests } = generateMockData();
+  initialize: async () => {
+    // Load real facilities CSV
+    const response = await fetch("/pmg_contracts_package_addresses.csv");
+    const csvText = await response.text();
+    const legalEntities = parseRealFacilities(csvText);
+
+    // Generate synthetic service requests using real facility IDs
+    const serviceRequests = generateServiceRequests(legalEntities);
+
     const computed = recompute({ serviceRequests, legalEntities, filters: defaultFilters });
     set({
       legalEntities,
