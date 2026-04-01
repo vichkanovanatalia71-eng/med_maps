@@ -9,6 +9,9 @@ import "leaflet.markercluster";
 import { useStore } from "@/store";
 import { ukraineOblastsGeoJSON } from "@/data/ukraine-oblasts";
 import { EnrichedFacility } from "@/types";
+import dynamic from "next/dynamic";
+
+const NavigationView = dynamic(() => import("./NavigationView"), { ssr: false });
 
 const UKRAINE_CENTER: L.LatLngExpression = [48.9, 31.2];
 const UKRAINE_ZOOM = 6;
@@ -67,6 +70,18 @@ export default function MapView() {
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string; facility: string } | null>(null);
   const [locating, setLocating] = useState(false);
   const [is3DMode, setIs3DMode] = useState(false);
+
+  // Navigation state
+  const [showNavPrompt, setShowNavPrompt] = useState<{
+    facility: { name: string; lat: number; lng: number };
+    route: { geometry: { coordinates: [number, number][] }; distance: number; duration: number; legs: { steps: unknown[] }[] };
+  } | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navData, setNavData] = useState<{
+    route: { geometry: { coordinates: [number, number][] }; distance: number; duration: number; legs: { steps: unknown[] }[] };
+    facilityName: string;
+    facilityLocation: { lat: number; lng: number };
+  } | null>(null);
 
   const { facilities, oblastData, mapMode } = useStore();
 
@@ -188,6 +203,12 @@ export default function MapView() {
       });
 
       map.fitBounds(line.getBounds(), { padding: [60, 60] });
+
+      // Show navigation prompt
+      setShowNavPrompt({
+        facility: { name: facilityName, lat: facilityLat, lng: facilityLng },
+        route: route,
+      });
     } catch {
       // Network error — fallback to straight line
       const dist = haversineDistance(userLocation.lat, userLocation.lng, facilityLat, facilityLng);
@@ -629,7 +650,7 @@ export default function MapView() {
       </div>
 
       {/* Route info panel */}
-      {routeInfo && (
+      {routeInfo && !showNavPrompt && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-xl shadow-lg border border-gray-100 px-5 py-3 flex items-center gap-4">
           <div>
             <div className="text-xs text-gray-500 truncate max-w-52">{routeInfo.facility}</div>
@@ -649,6 +670,72 @@ export default function MapView() {
             </svg>
           </button>
         </div>
+      )}
+
+      {/* Navigation prompt dialog */}
+      {showNavPrompt && (
+        <div className="absolute inset-0 z-[1500] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm mx-4 animate-[scaleIn_0.2s_ease-out]">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2">
+                  <path d="M12 2L4.5 20.3L12 16.5L19.5 20.3L12 2Z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-800">Почати навігацію?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">3D-режим з покроковими вказівками</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <div className="text-sm font-semibold text-gray-700 truncate">{showNavPrompt.facility.name}</div>
+              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                <span>{routeInfo?.distance}</span>
+                <span>|</span>
+                <span>{routeInfo?.duration}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNavPrompt(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Тільки маршрут
+              </button>
+              <button
+                onClick={() => {
+                  if (!showNavPrompt || !userLocation) return;
+                  setNavData({
+                    route: showNavPrompt.route,
+                    facilityName: showNavPrompt.facility.name,
+                    facilityLocation: { lat: showNavPrompt.facility.lat, lng: showNavPrompt.facility.lng },
+                  });
+                  setIsNavigating(true);
+                  setShowNavPrompt(null);
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-cyan-600 text-sm font-semibold text-white hover:bg-cyan-700 transition-colors shadow-md"
+              >
+                Навігація 3D
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3D Navigation View */}
+      {isNavigating && navData && userLocation && (
+        <NavigationView
+          route={navData.route as never}
+          userLocation={userLocation}
+          facilityName={navData.facilityName}
+          facilityLocation={navData.facilityLocation}
+          onExit={() => {
+            setIsNavigating(false);
+            setNavData(null);
+          }}
+        />
       )}
     </div>
   );
