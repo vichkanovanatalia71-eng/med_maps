@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
@@ -13,11 +13,12 @@ const UKRAINE_CENTER: L.LatLngExpression = [48.9, 31.2];
 const UKRAINE_ZOOM = 6;
 
 function getMarkerSize(count: number): number {
-  if (count < 100) return 18;
-  if (count < 500) return 24;
+  if (count < 100) return 20;
+  if (count < 500) return 26;
   if (count < 1000) return 30;
   if (count < 5000) return 36;
-  return 42;
+  if (count < 20000) return 40;
+  return 46;
 }
 
 function getHeatColor(value: number, max: number): string {
@@ -38,8 +39,51 @@ export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.MarkerClusterGroup | null>(null);
   const heatLayerRef = useRef<L.GeoJSON | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<typeof facilities>([]);
+  const [showSearch, setShowSearch] = useState(false);
 
   const { facilities, oblastData, mapMode } = useStore();
+
+  // Search
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const q = query.toLowerCase();
+    const results = facilities
+      .filter(f =>
+        f.name.toLowerCase().includes(q) ||
+        f.edrpou.includes(q) ||
+        f.city.toLowerCase().includes(q) ||
+        f.address.toLowerCase().includes(q)
+      )
+      .slice(0, 10);
+    setSearchResults(results);
+  }, [facilities]);
+
+  const flyToFacility = useCallback((lat: number, lng: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo([lat, lng], 16, { duration: 1 });
+    setShowSearch(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  }, []);
+
+  const resetView = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo(UKRAINE_CENTER, UKRAINE_ZOOM, { duration: 0.8 });
+  }, []);
+
+  const locateUser = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.locate({ setView: true, maxZoom: 14 });
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -49,14 +93,54 @@ export default function MapView() {
       center: UKRAINE_CENTER,
       zoom: UKRAINE_ZOOM,
       minZoom: 5,
-      maxZoom: 16,
-      zoomControl: true,
+      maxZoom: 19,
+      zoomControl: false,
+      attributionControl: true,
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map);
+    // Tile layers
+    const cartoVoyager = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: "abcd",
+        maxZoom: 20,
+      }
+    );
+
+    const osmStandard = L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }
+    );
+
+    const cartoLight = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: "abcd",
+        maxZoom: 20,
+      }
+    );
+
+    // Default layer
+    cartoVoyager.addTo(map);
+
+    // Layer switcher
+    const baseLayers = {
+      "Детальна (Voyager)": cartoVoyager,
+      "OpenStreetMap": osmStandard,
+      "Світла": cartoLight,
+    };
+    L.control.layers(baseLayers, {}, { position: "topright" }).addTo(map);
+
+    // Zoom control on the right
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    // Scale bar
+    L.control.scale({ position: "bottomleft", imperial: false, metric: true }).addTo(map);
 
     mapRef.current = map;
 
@@ -71,7 +155,6 @@ export default function MapView() {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear previous markers
     if (markersRef.current) {
       map.removeLayer(markersRef.current);
       markersRef.current = null;
@@ -81,16 +164,47 @@ export default function MapView() {
 
     const clusterGroup = L.markerClusterGroup({
       chunkedLoading: true,
-      maxClusterRadius: 60,
+      maxClusterRadius: (zoom: number) => {
+        // At high zoom (city level), smaller clusters to show individual facilities
+        if (zoom >= 15) return 20;
+        if (zoom >= 13) return 30;
+        if (zoom >= 11) return 40;
+        return 60;
+      },
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
+      disableClusteringAtZoom: 17,
       iconCreateFunction: (cluster) => {
-        const count = cluster.getChildCount();
+        const childCount = cluster.getChildCount();
+        // Sum completed referrals in this cluster
+        let totalCompleted = 0;
+        for (const marker of cluster.getAllChildMarkers()) {
+          totalCompleted += (marker.options as { completedCount?: number }).completedCount || 0;
+        }
+
         let size = 40;
-        if (count > 50) size = 55;
-        if (count > 100) size = 70;
+        let bgColor = "rgba(8, 145, 178, 0.7)";
+        let borderColor = "rgba(8, 145, 178, 0.9)";
+
+        if (childCount > 100) {
+          size = 70;
+          bgColor = "rgba(14, 116, 144, 0.8)";
+          borderColor = "rgba(14, 116, 144, 1)";
+        } else if (childCount > 50) {
+          size = 58;
+          bgColor = "rgba(6, 182, 212, 0.75)";
+          borderColor = "rgba(6, 182, 212, 0.95)";
+        } else if (childCount > 10) {
+          size = 48;
+        }
+
         return L.divIcon({
-          html: `<div class="cluster-marker" style="width:${size}px;height:${size}px;font-size:${size > 55 ? 14 : 12}px">${count}</div>`,
+          html: `<div class="cluster-marker" style="width:${size}px;height:${size}px;background:${bgColor};border-color:${borderColor}">
+            <div style="text-align:center;line-height:1.2">
+              <div style="font-size:${size > 55 ? 15 : 13}px">${childCount}</div>
+              <div style="font-size:9px;opacity:0.85">${totalCompleted >= 1000000 ? (totalCompleted / 1000000).toFixed(1) + 'M' : totalCompleted >= 1000 ? Math.round(totalCompleted / 1000) + 'K' : totalCompleted}</div>
+            </div>
+          </div>`,
           className: "",
           iconSize: L.point(size, size),
         });
@@ -100,7 +214,9 @@ export default function MapView() {
     for (const facility of facilities) {
       const size = getMarkerSize(facility.totalCompleted);
       const icon = L.divIcon({
-        html: `<div class="facility-marker" style="width:${size}px;height:${size}px"></div>`,
+        html: `<div class="facility-marker" style="width:${size}px;height:${size}px">
+          <span style="font-size:${size > 30 ? 10 : 8}px">${facility.totalCompleted >= 1000 ? Math.round(facility.totalCompleted / 1000) + 'K' : facility.totalCompleted}</span>
+        </div>`,
         className: "",
         iconSize: L.point(size, size),
       });
@@ -133,8 +249,11 @@ export default function MapView() {
         </div>
       `;
 
-      const marker = L.marker([facility.latitude, facility.longitude], { icon })
-        .bindPopup(popupContent, { className: "custom-popup", maxWidth: 320 });
+      const marker = L.marker([facility.latitude, facility.longitude], {
+        icon,
+        completedCount: facility.totalCompleted,
+      } as L.MarkerOptions & { completedCount: number })
+        .bindPopup(popupContent, { className: "custom-popup", maxWidth: 350, maxHeight: 450 });
 
       clusterGroup.addLayer(marker);
     }
@@ -152,7 +271,6 @@ export default function MapView() {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear previous heatmap
     if (heatLayerRef.current) {
       map.removeLayer(heatLayerRef.current);
       heatLayerRef.current = null;
@@ -190,8 +308,7 @@ export default function MapView() {
 
         layer.on({
           mouseover: (e) => {
-            const target = e.target;
-            target.setStyle({ weight: 3, fillOpacity: 0.85 });
+            e.target.setStyle({ weight: 3, fillOpacity: 0.85 });
           },
           mouseout: (e) => {
             geoJsonLayer.resetStyle(e.target);
@@ -205,10 +322,78 @@ export default function MapView() {
   }, [oblastData, mapMode, maxCompleted]);
 
   return (
-    <div
-      ref={containerRef}
-      id="map-container"
-      className="w-full h-full"
-    />
+    <div className="relative w-full h-full">
+      <div ref={containerRef} id="map-container" className="w-full h-full" />
+
+      {/* Map controls overlay */}
+      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2">
+        {/* Search */}
+        <div className="relative">
+          <div className="flex items-center bg-white rounded-lg shadow-md">
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="p-2.5 text-gray-500 hover:text-cyan-600 transition-colors"
+              title="Пошук закладу"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+            </button>
+            {showSearch && (
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Назва, ЄДРПОУ або місто..."
+                className="w-64 pr-3 py-2 text-sm border-none outline-none rounded-r-lg"
+                autoFocus
+              />
+            )}
+          </div>
+
+          {/* Search results dropdown */}
+          {searchResults.length > 0 && showSearch && (
+            <div className="absolute top-full left-0 mt-1 w-80 bg-white rounded-lg shadow-lg border border-gray-100 max-h-72 overflow-y-auto z-[1001]">
+              {searchResults.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => flyToFacility(f.latitude, f.longitude)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-cyan-50 border-b border-gray-50 last:border-0 transition-colors"
+                >
+                  <div className="text-xs font-semibold text-gray-800 truncate">{f.name}</div>
+                  <div className="text-xs text-gray-400 truncate mt-0.5">
+                    {f.city}, {f.oblast} | {formatNumber(f.totalCompleted)} направлень
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={resetView}
+            className="bg-white rounded-lg shadow-md p-2.5 text-gray-500 hover:text-cyan-600 transition-colors"
+            title="Вся Україна"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 12h18M12 3v18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4" />
+            </svg>
+          </button>
+          <button
+            onClick={locateUser}
+            className="bg-white rounded-lg shadow-md p-2.5 text-gray-500 hover:text-cyan-600 transition-colors"
+            title="Моє розташування"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
