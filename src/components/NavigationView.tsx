@@ -116,10 +116,12 @@ export default function NavigationView({
           "osm-raster": {
             type: "raster",
             tiles: [
-              "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-              "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+              "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+              "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+              "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
             ],
             tileSize: 256,
+            maxzoom: 20,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
           },
           "openmaptiles": {
@@ -132,16 +134,11 @@ export default function NavigationView({
         },
         layers: [
           {
-            id: "background",
-            type: "background",
-            paint: { "background-color": "#e8e0d8" },
-          },
-          {
             id: "osm-raster-layer",
             type: "raster",
             source: "osm-raster",
             minzoom: 0,
-            maxzoom: 20,
+            maxzoom: 22,
           },
           {
             id: "3d-buildings",
@@ -164,7 +161,7 @@ export default function NavigationView({
               "fill-extrusion-base": [
                 "coalesce", ["get", "render_min_height"], 0,
               ],
-              "fill-extrusion-opacity": 0.75,
+              "fill-extrusion-opacity": 0.7,
             },
           },
         ],
@@ -189,21 +186,21 @@ export default function NavigationView({
         },
       });
 
-      // Route outline (glow)
+      // Route outline (glow) — thick, semi-transparent
       map.addLayer({
         id: "route-outline",
         type: "line",
         source: "route",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#0e7490",
-          "line-width": 12,
-          "line-opacity": 0.3,
-          "line-blur": 4,
+          "line-color": "#0c4a6e",
+          "line-width": 16,
+          "line-opacity": 0.35,
+          "line-blur": 6,
         },
       });
 
-      // Route line main
+      // Route line main — bright, visible
       map.addLayer({
         id: "route-line",
         type: "line",
