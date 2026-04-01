@@ -81,7 +81,8 @@ export const useStore = create<AppState>((set, get) => ({
       executorsResponse.json() as Promise<ExecutorData[]>,
     ]);
 
-    const legalEntities = parseRealFacilities(entityCsv, divisionsCsv);
+    const executorIds = executorsData.map(e => e.id);
+    const legalEntities = parseRealFacilities(entityCsv, divisionsCsv, executorIds);
     const allSpecialities = getUniqueSpecialities(executorsData);
     const allCategories = getUniqueCategories(executorsData);
     const allPeriods = getUniquePeriods(executorsData);

@@ -67,19 +67,29 @@ function parseCSVLine(line: string): string[] {
  * property_type, email, website, phone, owner, registration_area,
  * registration_settlement, registration_address, lat, lng
  */
-export function parseRealFacilities(entityCsv: string, divisionsCsv?: string): LegalEntity[] {
-  // Build division coords lookup for fallback
-  const divisionCoords = new Map<string, { lat: number; lng: number }>();
+export function parseRealFacilities(entityCsv: string, divisionsCsv?: string, executorIds?: string[]): LegalEntity[] {
+  // Build division info lookup (coords + name + address) for fallback
+  const divisionInfo = new Map<string, { lat: number; lng: number; name: string; address: string; oblast: string; city: string }>();
   if (divisionsCsv) {
     const divLines = divisionsCsv.split("\n").filter(l => l.trim());
+    // Columns: 0:legal_entity_id, 1:division_id, 2:division_name, 3:division_type,
+    // 4:phone, 5:email, 6:residence_area, 7:gromada, 8:gromada_koatuu,
+    // 9:region, 10:settlement_type, 11:settlement, 12:settlement_koatuu,
+    // 13:residence_addresses, 14:location, 15:lat, 16:lng
     for (let i = 1; i < divLines.length; i++) {
       const fields = parseCSVLine(divLines[i]);
       if (fields.length < 17) continue;
       const entityId = fields[0].trim();
       const lat = parseFloat(fields[15]);
       const lng = parseFloat(fields[16]);
-      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 && !divisionCoords.has(entityId)) {
-        divisionCoords.set(entityId, { lat, lng });
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0 && !divisionInfo.has(entityId)) {
+        divisionInfo.set(entityId, {
+          lat, lng,
+          name: fields[2]?.trim() || "",
+          address: fields[13]?.trim() || "",
+          oblast: normalizeOblast(fields[6] || ""),
+          city: fields[11]?.trim() || "",
+        });
       }
     }
   }
@@ -108,7 +118,7 @@ export function parseRealFacilities(entityCsv: string, divisionsCsv?: string): L
 
     // Fallback to division coordinates if entity has no coords
     if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
-      const divCoord = divisionCoords.get(id);
+      const divCoord = divisionInfo.get(id);
       if (divCoord) {
         lat = divCoord.lat;
         lng = divCoord.lng;
@@ -137,6 +147,31 @@ export function parseRealFacilities(entityCsv: string, divisionsCsv?: string): L
       longitude: lng,
       status: "ACTIVE",
     });
+  }
+
+  // Create placeholder entities for executors not found in entity CSV
+  if (executorIds) {
+    for (const execId of executorIds) {
+      if (seen.has(execId)) continue;
+      seen.add(execId);
+
+      const divInfo = divisionInfo.get(execId);
+      if (divInfo) {
+        entities.push({
+          id: execId,
+          name: divInfo.name || "Заклад (дані з підрозділу)",
+          edrpou: "",
+          type: "Контрактований заклад",
+          address: divInfo.address,
+          oblast: divInfo.oblast,
+          city: divInfo.city,
+          latitude: divInfo.lat,
+          longitude: divInfo.lng,
+          status: "ACTIVE",
+        });
+      }
+      // Skip executors without any coordinates — they won't appear on the map
+    }
   }
 
   return entities;
