@@ -408,7 +408,7 @@ export default function MapView() {
               <span style="font-size:11px;color:#3b82f6;font-weight:600">${formatDistance(dist)}</span>
               <span style="font-size:10px;color:#64748b"> від вас</span>
             </div>
-            <button onclick="window.__buildRoute(${facility.latitude},${facility.longitude},'${facility.name.replace(/'/g, "\\'")}')"
+            <button data-route-lat="${facility.latitude}" data-route-lng="${facility.longitude}" data-route-name="${facility.name.replace(/"/g, '&quot;')}"
               style="background:#0891b2;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer">
               Маршрут
             </button>
@@ -446,14 +446,22 @@ export default function MapView() {
     markersRef.current = clusterGroup;
   }, [facilities, mapMode, userLocation, buildRoute]);
 
-  // Expose buildRoute to popup buttons via window
+  // Event delegation for route buttons inside popups
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__buildRoute = (lat: number, lng: number, name: string) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest("[data-route-lat]") as HTMLElement | null;
+      if (!btn) return;
+      const lat = parseFloat(btn.dataset.routeLat || "0");
+      const lng = parseFloat(btn.dataset.routeLng || "0");
+      const name = btn.dataset.routeName || "";
       buildRoute(lat, lng, name);
     };
-    return () => {
-      delete (window as unknown as Record<string, unknown>).__buildRoute;
-    };
+
+    container.addEventListener("click", handleClick);
+    return () => container.removeEventListener("click", handleClick);
   }, [buildRoute]);
 
   // Heatmap (choropleth) mode
