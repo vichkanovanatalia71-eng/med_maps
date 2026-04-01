@@ -66,6 +66,7 @@ export default function MapView() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string; facility: string } | null>(null);
   const [locating, setLocating] = useState(false);
+  const [is3DMode, setIs3DMode] = useState(false);
 
   const { facilities, oblastData, mapMode } = useStore();
 
@@ -314,6 +315,12 @@ export default function MapView() {
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.scale({ position: "bottomleft", imperial: false, metric: true }).addTo(map);
 
+    // Track zoom for 3D/flat marker switching (only trigger on threshold crossing)
+    map.on("zoomend", () => {
+      const z = map.getZoom();
+      setIs3DMode(z >= 12);
+    });
+
     mapRef.current = map;
 
     return () => {
@@ -379,12 +386,35 @@ export default function MapView() {
 
     for (const facility of facilities) {
       const size = getMarkerSize(facility.totalCompleted);
+      const countLabel = facility.totalCompleted >= 1000000
+        ? (facility.totalCompleted / 1000000).toFixed(1) + 'M'
+        : facility.totalCompleted >= 1000
+          ? Math.round(facility.totalCompleted / 1000) + 'K'
+          : String(facility.totalCompleted);
+
+      // 3D pin marker for close zoom, flat circle for far zoom
+      const is3D = is3DMode;
+      const pinHeight = size + 16;
+
+      const markerHtml = is3D
+        ? `<div class="marker-3d-wrapper" style="width:${size + 8}px;height:${pinHeight + 10}px">
+            <div class="marker-3d-pin" style="--pin-size:${size}px;--pin-color:rgba(8,145,178,0.9)">
+              <div class="marker-3d-head">
+                <span>${countLabel}</span>
+              </div>
+              <div class="marker-3d-spike"></div>
+            </div>
+            <div class="marker-3d-shadow"></div>
+          </div>`
+        : `<div class="facility-marker" style="width:${size}px;height:${size}px">
+            <span style="font-size:${size > 30 ? 10 : 8}px">${countLabel}</span>
+          </div>`;
+
       const icon = L.divIcon({
-        html: `<div class="facility-marker" style="width:${size}px;height:${size}px">
-          <span style="font-size:${size > 30 ? 10 : 8}px">${facility.totalCompleted >= 1000 ? Math.round(facility.totalCompleted / 1000) + 'K' : facility.totalCompleted}</span>
-        </div>`,
+        html: markerHtml,
         className: "",
-        iconSize: L.point(size, size),
+        iconSize: is3D ? L.point(size + 8, pinHeight + 10) : L.point(size, size),
+        iconAnchor: is3D ? L.point((size + 8) / 2, pinHeight + 6) : L.point(size / 2, size / 2),
       });
 
       const categoryRows = Object.entries(facility.categories)
@@ -444,7 +474,7 @@ export default function MapView() {
 
     map.addLayer(clusterGroup);
     markersRef.current = clusterGroup;
-  }, [facilities, mapMode, userLocation, buildRoute]);
+  }, [facilities, mapMode, userLocation, buildRoute, is3DMode]);
 
   // Event delegation for route buttons inside popups
   useEffect(() => {
