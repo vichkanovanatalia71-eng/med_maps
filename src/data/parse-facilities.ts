@@ -41,6 +41,11 @@ function normalizeOblast(raw: string): string {
   return raw.trim();
 }
 
+// Normalize apostrophes (Ukrainian has many variants)
+function normalizeApostrophe(s: string): string {
+  return s.replace(/[′ʼ`'''ʻ]/g, "'");
+}
+
 // Extract city from address string like "ХМЕЛЬНИЦЬКА область, місто ШЕПЕТІВКА, вулиця ..."
 function extractCity(address: string): string {
   const parts = address.split(",").map(p => p.trim());
@@ -48,39 +53,49 @@ function extractCity(address: string): string {
     const upper = part.toUpperCase();
     // Try "місто XXX", "смт XXX", "село XXX", or just the second part
     const match = upper.match(/(?:МІСТО|МІС\.|М\.|СМТ|СЕЛИЩЕ|СЕЛО)\s+(.+)/);
-    if (match) return match[1].trim();
+    if (match) return normalizeApostrophe(match[1].trim());
   }
   // Fallback: second part of address is usually city
   if (parts.length >= 2) {
     const p = parts[1].replace(/^(місто|смт|село|селище|м\.)\s*/i, "").trim();
-    return p.toUpperCase();
+    return normalizeApostrophe(p.toUpperCase());
   }
   return "";
 }
 
-// Get coordinates for a city, with jitter for uniqueness
+// Get coordinates for a city, with small jitter for uniqueness
 function getCoords(city: string, oblast: string, seed: number): { lat: number; lng: number } {
-  const cityUpper = city.toUpperCase().trim();
+  const cityNorm = normalizeApostrophe(city.toUpperCase().trim());
 
   // Try exact city match
-  if (CITY_COORDS[cityUpper]) {
-    const c = CITY_COORDS[cityUpper];
-    // Small jitter so facilities in same city don't overlap
-    const jitterLat = ((seed * 7919) % 1000) / 100000 - 0.005;
-    const jitterLng = ((seed * 6271) % 1000) / 100000 - 0.005;
+  if (CITY_COORDS[cityNorm]) {
+    const c = CITY_COORDS[cityNorm];
+    // Very small jitter (~200m) so facilities in same city don't overlap
+    const jitterLat = ((seed * 7919) % 1000) / 500000 - 0.001;
+    const jitterLng = ((seed * 6271) % 1000) / 500000 - 0.001;
     return { lat: c.lat + jitterLat, lng: c.lng + jitterLng };
   }
 
-  // Fallback to oblast center with larger jitter
+  // Try without apostrophe variants
+  const cityNoApo = cityNorm.replace(/'/g, "");
+  for (const [key, coords] of Object.entries(CITY_COORDS)) {
+    if (key.replace(/'/g, "") === cityNoApo) {
+      const jitterLat = ((seed * 7919) % 1000) / 500000 - 0.001;
+      const jitterLng = ((seed * 6271) % 1000) / 500000 - 0.001;
+      return { lat: coords.lat + jitterLat, lng: coords.lng + jitterLng };
+    }
+  }
+
+  // Fallback to oblast center with TINY jitter (~500m, never into sea)
   const oblastCenter = OBLAST_CENTERS[oblast];
   if (oblastCenter) {
-    const jitterLat = ((seed * 7919) % 10000) / 50000 - 0.1;
-    const jitterLng = ((seed * 6271) % 10000) / 50000 - 0.1;
+    const jitterLat = ((seed * 7919) % 1000) / 200000 - 0.0025;
+    const jitterLng = ((seed * 6271) % 1000) / 200000 - 0.0025;
     return { lat: oblastCenter.lat + jitterLat, lng: oblastCenter.lng + jitterLng };
   }
 
   // Last resort: center of Ukraine
-  return { lat: 48.5 + ((seed * 7919) % 100) / 1000, lng: 31.2 + ((seed * 6271) % 100) / 1000 };
+  return { lat: 48.5, lng: 31.2 };
 }
 
 // Parse CSV with proper handling of quoted fields containing commas and escaped quotes
