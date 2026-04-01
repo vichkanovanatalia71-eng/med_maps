@@ -1,20 +1,17 @@
 "use client";
 
 import { useStore } from "@/store";
-import { SPECIALITIES, CATEGORIES, AGE_GROUPS, PERIODS } from "@/data/mock-data";
 
-function MultiSelect({
+function ChipSelect({
   label,
   options,
   selected,
   onChange,
-  counts,
 }: {
   label: string;
-  options: { value: string; label: string }[];
+  options: string[];
   selected: string[];
   onChange: (values: string[]) => void;
-  counts?: Record<string, number>;
 }) {
   const toggle = (value: string) => {
     if (selected.includes(value)) {
@@ -31,12 +28,11 @@ function MultiSelect({
       </label>
       <div className="flex flex-wrap gap-1.5">
         {options.map(opt => {
-          const isActive = selected.includes(opt.value);
-          const count = counts?.[opt.value];
+          const isActive = selected.includes(opt);
           return (
             <button
-              key={opt.value}
-              onClick={() => toggle(opt.value)}
+              key={opt}
+              onClick={() => toggle(opt)}
               className={`
                 px-2.5 py-1 rounded-full text-xs font-medium transition-all
                 ${isActive
@@ -45,12 +41,7 @@ function MultiSelect({
                 }
               `}
             >
-              {opt.label}
-              {count !== undefined && (
-                <span className={`ml-1 ${isActive ? "text-cyan-200" : "text-gray-400"}`}>
-                  {count}
-                </span>
-              )}
+              {opt}
             </button>
           );
         })}
@@ -97,22 +88,21 @@ function RadioToggle({
 }
 
 const AGE_GROUP_LABELS: Record<string, string> = {
+  "y0-5": "0-5 років",
   "y06-17": "6-17 років",
   "y18-39": "18-39 років",
   "y40-64": "40-64 років",
   "y65+": "65+ років",
+  "Уточнюється": "Уточнюється",
 };
 
-export default function FilterPanel() {
-  const { filters, setFilter, resetFilters, availableServices, serviceRequests } = useStore();
+const AGE_GROUPS_ORDER = ["y0-5", "y06-17", "y18-39", "y40-64", "y65+", "Уточнюється"];
 
-  // Compute counts for specialities
-  const specialityCounts: Record<string, number> = {};
-  const categoryCounts: Record<string, number> = {};
-  for (const sr of serviceRequests) {
-    specialityCounts[sr.requester_employee_speciality] = (specialityCounts[sr.requester_employee_speciality] || 0) + 1;
-    categoryCounts[sr.service_request_category] = (categoryCounts[sr.service_request_category] || 0) + 1;
-  }
+export default function FilterPanel() {
+  const {
+    filters, setFilter, resetFilters,
+    availableServices, allSpecialities, allCategories, allPeriods,
+  } = useStore();
 
   return (
     <div className="p-4 overflow-y-auto h-full">
@@ -127,40 +117,41 @@ export default function FilterPanel() {
       </div>
 
       {/* Period filter */}
-      <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Період
-        </label>
-        <div className="flex gap-2">
-          <select
-            value={filters.periodFrom}
-            onChange={(e) => setFilter("periodFrom", e.target.value)}
-            className="flex-1 text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
-          >
-            {PERIODS.map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <span className="text-gray-400 self-center text-xs">—</span>
-          <select
-            value={filters.periodTo}
-            onChange={(e) => setFilter("periodTo", e.target.value)}
-            className="flex-1 text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
-          >
-            {PERIODS.map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+      {allPeriods.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Період
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={filters.periodFrom}
+              onChange={(e) => setFilter("periodFrom", e.target.value)}
+              className="flex-1 text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            >
+              {allPeriods.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <span className="text-gray-400 self-center text-xs">—</span>
+            <select
+              value={filters.periodTo}
+              onChange={(e) => setFilter("periodTo", e.target.value)}
+              className="flex-1 text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            >
+              {allPeriods.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Category filter */}
-      <MultiSelect
+      <ChipSelect
         label="Категорія послуги"
-        options={CATEGORIES.map(c => ({ value: c, label: c }))}
+        options={allCategories}
         selected={filters.categories}
         onChange={(v) => setFilter("categories", v)}
-        counts={categoryCounts}
       />
 
       {/* Service filter (cascading) */}
@@ -174,7 +165,7 @@ export default function FilterPanel() {
             onChange={(e) => setFilter("services", e.target.value ? [e.target.value] : [])}
             className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
           >
-            <option value="">Всі послуги</option>
+            <option value="">Всі послуги ({availableServices.length})</option>
             {availableServices.map(s => (
               <option key={s.code} value={s.code}>{s.name}</option>
             ))}
@@ -194,12 +185,10 @@ export default function FilterPanel() {
             const values = Array.from(e.target.selectedOptions, o => o.value);
             setFilter("specialities", values);
           }}
-          className="w-full text-xs border border-gray-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500 h-28"
+          className="w-full text-xs border border-gray-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500 h-32"
         >
-          {SPECIALITIES.sort((a, b) => a.localeCompare(b, "uk")).map(s => (
-            <option key={s} value={s}>
-              {s} ({specialityCounts[s] || 0})
-            </option>
+          {allSpecialities.map(s => (
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
         {filters.specialities.length > 0 && (
@@ -221,9 +210,9 @@ export default function FilterPanel() {
       />
 
       {/* Age groups */}
-      <MultiSelect
+      <ChipSelect
         label="Вікова група"
-        options={AGE_GROUPS.map(a => ({ value: a, label: AGE_GROUP_LABELS[a] || a }))}
+        options={AGE_GROUPS_ORDER}
         selected={filters.ageGroups}
         onChange={(v) => setFilter("ageGroups", v)}
       />
@@ -234,19 +223,6 @@ export default function FilterPanel() {
         options={["Всі", "Жіноча", "Чоловіча"]}
         value={filters.gender}
         onChange={(v) => setFilter("gender", v)}
-      />
-
-      {/* Status */}
-      <MultiSelect
-        label="Статус виконання"
-        options={[
-          { value: "Виконані", label: "Виконані" },
-          { value: "Відкликані", label: "Відкликані" },
-          { value: "Помилкові", label: "Помилкові" },
-          { value: "Невиконані", label: "Невиконані" },
-        ]}
-        selected={filters.statuses}
-        onChange={(v) => setFilter("statuses", v)}
       />
     </div>
   );

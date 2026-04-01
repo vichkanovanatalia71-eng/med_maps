@@ -110,18 +110,26 @@ export default function MapView() {
         .map(([cat, count]) => `<tr><td style="padding:2px 8px 2px 0;color:#475569">${cat}</td><td style="text-align:right;font-weight:600">${formatNumber(count)}</td></tr>`)
         .join("");
 
+      const topServices = facility.services
+        .sort((a, b) => b.completed - a.completed)
+        .slice(0, 5)
+        .map(s => `<tr><td style="padding:2px 8px 2px 0;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</td><td style="text-align:right;font-weight:600;white-space:nowrap">${formatNumber(s.completed)}</td></tr>`)
+        .join("");
+
       const popupContent = `
-        <div style="padding:12px;font-size:13px;line-height:1.5">
+        <div style="padding:12px;font-size:13px;line-height:1.5;max-height:400px;overflow-y:auto">
           <div style="font-weight:700;font-size:14px;color:#0e7490;margin-bottom:4px">${facility.name}</div>
           <div style="color:#64748b;font-size:12px;margin-bottom:8px">
-            ЄДРПОУ: ${facility.edrpou} | ${facility.type}<br/>
+            ЄДРПОУ: ${facility.edrpou}<br/>
             ${facility.address}
           </div>
           <div style="background:#f0fdfa;border-radius:6px;padding:8px;margin-bottom:8px">
             <div style="font-size:22px;font-weight:700;color:#0e7490">${formatNumber(facility.totalCompleted)}</div>
             <div style="color:#64748b;font-size:11px">погашених направлень</div>
           </div>
-          <table style="width:100%;font-size:12px">${categoryRows}</table>
+          <div style="font-weight:600;font-size:12px;color:#334155;margin-bottom:4px">За категоріями:</div>
+          <table style="width:100%;font-size:12px;margin-bottom:8px">${categoryRows}</table>
+          ${topServices ? `<div style="font-weight:600;font-size:12px;color:#334155;margin-bottom:4px">Топ послуги:</div><table style="width:100%;font-size:11px">${topServices}</table>` : ""}
         </div>
       `;
 

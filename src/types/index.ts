@@ -11,21 +11,22 @@ export interface LegalEntity {
   status: "ACTIVE" | "CLOSED";
 }
 
-export interface ServiceRequest {
-  period_created_at: string;
-  requester_legal_entity_id: string;
-  requester_employee_speciality: string;
-  service_request_category: string;
-  service_request_priority: string;
-  service_code: string;
-  service_code_name: string;
-  patient_age_group: string;
-  patient_gender: string;
-  used_by_legal_entity_identifier_value: string | null;
-  count_created_requests_all: number;
-  count_is_completed: number;
-  count_is_recalled: number;
-  count_is_entered_in_error: number;
+export interface ExecutorService {
+  code: string;
+  name: string;
+  completed: number;
+}
+
+export interface ExecutorData {
+  id: string;
+  completed: number;
+  by_category: Record<string, number>;
+  by_specialty: Record<string, number>;
+  by_period: Record<string, number>;
+  by_age_group: Record<string, number>;
+  by_gender: Record<string, number>;
+  by_priority: Record<string, number>;
+  services: ExecutorService[];
 }
 
 export interface EnrichedFacility {
@@ -39,14 +40,13 @@ export interface EnrichedFacility {
   latitude: number;
   longitude: number;
   totalCompleted: number;
-  totalCreated: number;
-  totalRecalled: number;
-  totalError: number;
   categories: Record<string, number>;
   specialities: Record<string, number>;
   ageGroups: Record<string, number>;
   genderDistribution: Record<string, number>;
+  priorities: Record<string, number>;
   monthlyData: Record<string, number>;
+  services: ExecutorService[];
 }
 
 export interface Filters {
@@ -58,13 +58,11 @@ export interface Filters {
   gender: string;
   periodFrom: string;
   periodTo: string;
-  statuses: string[];
 }
 
 export interface OblastData {
   name: string;
   totalCompleted: number;
-  totalCreated: number;
   facilitiesCount: number;
 }
 

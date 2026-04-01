@@ -12,9 +12,6 @@ export function exportToCSV(facilities: EnrichedFacility[]) {
     "Широта",
     "Довгота",
     "Погашено направлень",
-    "Створено направлень",
-    "Відкликано",
-    "Помилкові",
   ];
 
   const rows = facilities.map(f => [
@@ -27,9 +24,6 @@ export function exportToCSV(facilities: EnrichedFacility[]) {
     f.latitude,
     f.longitude,
     f.totalCompleted,
-    f.totalCreated,
-    f.totalRecalled,
-    f.totalError,
   ]);
 
   const csv = BOM + headers.join(";") + "\n" + rows.map(r => r.join(";")).join("\n");
@@ -71,7 +65,6 @@ export function generateShareableURL(filters: Filters): string {
   if (filters.gender !== "Всі") params.set("gen", filters.gender);
   if (filters.periodFrom) params.set("from", filters.periodFrom);
   if (filters.periodTo) params.set("to", filters.periodTo);
-  if (filters.statuses.length) params.set("stat", filters.statuses.join(","));
 
   const base = typeof window !== "undefined" ? window.location.origin + window.location.pathname : "";
   const queryString = params.toString();

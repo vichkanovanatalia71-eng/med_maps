@@ -1,27 +1,27 @@
 import { create } from "zustand";
-import { Filters, MapMode, EnrichedFacility, LegalEntity, ServiceRequest } from "@/types";
-import { enrichFacilities, getAggregateStats, aggregateByOblast, getAvailableServices } from "@/lib/data-processing";
-import { generateServiceRequests, PERIODS } from "@/data/mock-data";
+import { Filters, MapMode, EnrichedFacility, LegalEntity, ExecutorData } from "@/types";
+import {
+  enrichFacilities, getAggregateStats, aggregateByOblast,
+  getAvailableServices, getUniqueSpecialities, getUniqueCategories, getUniquePeriods,
+} from "@/lib/data-processing";
 import { parseRealFacilities } from "@/data/parse-facilities";
 
 interface AppState {
-  // Raw data
   legalEntities: LegalEntity[];
-  serviceRequests: ServiceRequest[];
-
-  // Derived data
+  executors: ExecutorData[];
   facilities: EnrichedFacility[];
   stats: ReturnType<typeof getAggregateStats> | null;
-  oblastData: Record<string, { name: string; totalCompleted: number; totalCreated: number; facilitiesCount: number }>;
+  oblastData: Record<string, { name: string; totalCompleted: number; facilitiesCount: number }>;
   availableServices: { code: string; name: string }[];
+  allSpecialities: string[];
+  allCategories: string[];
+  allPeriods: string[];
 
-  // UI State
   mapMode: MapMode;
   sidebarOpen: boolean;
   filters: Filters;
   isLoaded: boolean;
 
-  // Actions
   initialize: () => Promise<void>;
   setMapMode: (mode: MapMode) => void;
   toggleSidebar: () => void;
@@ -36,62 +36,89 @@ const defaultFilters: Filters = {
   priority: "Всі",
   ageGroups: [],
   gender: "Всі",
-  periodFrom: PERIODS[0],
-  periodTo: PERIODS[PERIODS.length - 1],
-  statuses: [],
+  periodFrom: "",
+  periodTo: "",
 };
 
-function recompute(state: { serviceRequests: ServiceRequest[]; legalEntities: LegalEntity[]; filters: Filters }) {
-  const facilities = enrichFacilities(state.serviceRequests, state.legalEntities, state.filters);
+function recompute(state: {
+  executors: ExecutorData[];
+  legalEntities: LegalEntity[];
+  filters: Filters;
+}) {
+  const facilities = enrichFacilities(state.executors, state.legalEntities, state.filters);
   const stats = getAggregateStats(facilities);
   const oblastData = aggregateByOblast(facilities);
-  const availableServices = getAvailableServices(state.serviceRequests, state.filters.categories);
+  const availableServices = getAvailableServices(state.executors, state.filters.categories);
   return { facilities, stats, oblastData, availableServices };
 }
 
 export const useStore = create<AppState>((set, get) => ({
   legalEntities: [],
-  serviceRequests: [],
+  executors: [],
   facilities: [],
   stats: null,
   oblastData: {},
   availableServices: [],
+  allSpecialities: [],
+  allCategories: [],
+  allPeriods: [],
   mapMode: "markers",
   sidebarOpen: true,
   filters: { ...defaultFilters },
   isLoaded: false,
 
   initialize: async () => {
-    // Load real facilities CSV
-    const response = await fetch("/pmg_contracts_package_addresses.csv");
-    const csvText = await response.text();
+    // Load both data sources in parallel
+    const [csvResponse, executorsResponse] = await Promise.all([
+      fetch("/pmg_contracts_package_addresses.csv"),
+      fetch("/executors.json"),
+    ]);
+
+    const [csvText, executorsData] = await Promise.all([
+      csvResponse.text(),
+      executorsResponse.json() as Promise<ExecutorData[]>,
+    ]);
+
     const legalEntities = parseRealFacilities(csvText);
+    const allSpecialities = getUniqueSpecialities(executorsData);
+    const allCategories = getUniqueCategories(executorsData);
+    const allPeriods = getUniquePeriods(executorsData);
 
-    // Generate synthetic service requests using real facility IDs
-    const serviceRequests = generateServiceRequests(legalEntities);
+    const filters = {
+      ...defaultFilters,
+      periodFrom: allPeriods[0] || "",
+      periodTo: allPeriods[allPeriods.length - 1] || "",
+    };
 
-    const computed = recompute({ serviceRequests, legalEntities, filters: defaultFilters });
+    const computed = recompute({
+      executors: executorsData,
+      legalEntities,
+      filters,
+    });
+
     set({
       legalEntities,
-      serviceRequests,
+      executors: executorsData,
+      allSpecialities,
+      allCategories,
+      allPeriods,
+      filters,
       ...computed,
       isLoaded: true,
     });
   },
 
   setMapMode: (mode) => set({ mapMode: mode }),
-
   toggleSidebar: () => set(state => ({ sidebarOpen: !state.sidebarOpen })),
 
   setFilter: (key, value) => {
     const state = get();
     const newFilters = { ...state.filters, [key]: value };
-    // If categories changed, reset services filter
     if (key === "categories") {
       newFilters.services = [];
     }
     const computed = recompute({
-      serviceRequests: state.serviceRequests,
+      executors: state.executors,
       legalEntities: state.legalEntities,
       filters: newFilters,
     });
@@ -100,11 +127,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   resetFilters: () => {
     const state = get();
+    const filters = {
+      ...defaultFilters,
+      periodFrom: state.allPeriods[0] || "",
+      periodTo: state.allPeriods[state.allPeriods.length - 1] || "",
+    };
     const computed = recompute({
-      serviceRequests: state.serviceRequests,
+      executors: state.executors,
       legalEntities: state.legalEntities,
-      filters: defaultFilters,
+      filters,
     });
-    set({ filters: { ...defaultFilters }, ...computed });
+    set({ filters, ...computed });
   },
 }));
