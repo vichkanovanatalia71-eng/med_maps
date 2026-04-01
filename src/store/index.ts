@@ -70,7 +70,7 @@ export const useStore = create<AppState>((set, get) => ({
   initialize: async () => {
     // Load both data sources in parallel
     const [csvResponse, executorsResponse] = await Promise.all([
-      fetch("/pmg_contracts_package_addresses.csv"),
+      fetch("/pmg_contracts_info.csv"),
       fetch("/executors.json"),
     ]);
 

@@ -41,21 +41,19 @@ function normalizeOblast(raw: string): string {
   return raw.trim();
 }
 
-// Normalize apostrophes (Ukrainian has many variants)
+// Normalize apostrophes
 function normalizeApostrophe(s: string): string {
   return s.replace(/[′ʼ`'''ʻ]/g, "'");
 }
 
-// Extract city from address string like "ХМЕЛЬНИЦЬКА область, місто ШЕПЕТІВКА, вулиця ..."
+// Extract city from address string
 function extractCity(address: string): string {
   const parts = address.split(",").map(p => p.trim());
   for (const part of parts) {
     const upper = part.toUpperCase();
-    // Try "місто XXX", "смт XXX", "село XXX", or just the second part
-    const match = upper.match(/(?:МІСТО|МІС\.|М\.|СМТ|СЕЛИЩЕ|СЕЛО)\s+(.+)/);
+    const match = upper.match(/(?:МІСТО|МІС\.|М\.|СМТ|СМТ\.|СЕЛИЩЕ|СЕЛО)\s+(.+)/);
     if (match) return normalizeApostrophe(match[1].trim());
   }
-  // Fallback: second part of address is usually city
   if (parts.length >= 2) {
     const p = parts[1].replace(/^(місто|смт|село|селище|м\.)\s*/i, "").trim();
     return normalizeApostrophe(p.toUpperCase());
@@ -63,20 +61,18 @@ function extractCity(address: string): string {
   return "";
 }
 
-// Get coordinates for a city, with small jitter for uniqueness
+// Get coordinates for a city
 function getCoords(city: string, oblast: string, seed: number): { lat: number; lng: number } {
   const cityNorm = normalizeApostrophe(city.toUpperCase().trim());
 
-  // Try exact city match
   if (CITY_COORDS[cityNorm]) {
     const c = CITY_COORDS[cityNorm];
-    // Very small jitter (~200m) so facilities in same city don't overlap
     const jitterLat = ((seed * 7919) % 1000) / 500000 - 0.001;
     const jitterLng = ((seed * 6271) % 1000) / 500000 - 0.001;
     return { lat: c.lat + jitterLat, lng: c.lng + jitterLng };
   }
 
-  // Try without apostrophe variants
+  // Fuzzy match without apostrophes
   const cityNoApo = cityNorm.replace(/'/g, "");
   for (const [key, coords] of Object.entries(CITY_COORDS)) {
     if (key.replace(/'/g, "") === cityNoApo) {
@@ -86,7 +82,7 @@ function getCoords(city: string, oblast: string, seed: number): { lat: number; l
     }
   }
 
-  // Fallback to oblast center with TINY jitter (~500m, never into sea)
+  // Fallback to oblast center with tiny jitter
   const oblastCenter = OBLAST_CENTERS[oblast];
   if (oblastCenter) {
     const jitterLat = ((seed * 7919) % 1000) / 200000 - 0.0025;
@@ -94,11 +90,19 @@ function getCoords(city: string, oblast: string, seed: number): { lat: number; l
     return { lat: oblastCenter.lat + jitterLat, lng: oblastCenter.lng + jitterLng };
   }
 
-  // Last resort: center of Ukraine
   return { lat: 48.5, lng: 31.2 };
 }
 
-// Parse CSV with proper handling of quoted fields containing commas and escaped quotes
+// Parse the wrapped CSV line: each line is one big quoted field with doubled quotes
+function unwrapLine(line: string): string {
+  line = line.trim();
+  if (line.startsWith('"') && line.endsWith('"')) {
+    line = line.slice(1, -1);
+  }
+  return line.replace(/""/g, '"');
+}
+
+// Parse CSV with proper handling of quoted fields
 function parseCSVLine(line: string): string[] {
   const fields: string[] = [];
   let current = "";
@@ -107,7 +111,6 @@ function parseCSVLine(line: string): string[] {
 
   while (i < line.length) {
     const ch = line[i];
-
     if (inQuotes) {
       if (ch === '"') {
         if (i + 1 < line.length && line[i + 1] === '"') {
@@ -139,12 +142,16 @@ function parseCSVLine(line: string): string[] {
   return fields;
 }
 
+interface Division {
+  division_id: string;
+  division_adresses: string;
+}
+
 export function parseRealFacilities(csvContent: string): LegalEntity[] {
   const lines = csvContent.split("\n").filter(l => l.trim());
-  // Skip header
-  const dataLines = lines.slice(1);
+  const dataLines = lines.slice(1); // Skip header
 
-  // Group by legal_entity_id to deduplicate (keep first address per entity)
+  // Group by legal_entity_id, keeping first address per entity
   const entityMap = new Map<string, {
     id: string;
     edrpou: string;
@@ -152,23 +159,45 @@ export function parseRealFacilities(csvContent: string): LegalEntity[] {
     address: string;
     oblast: string;
     city: string;
+    contractAmount: number;
   }>();
 
-  for (const line of dataLines) {
-    const fields = parseCSVLine(line);
-    if (fields.length < 7) continue;
+  for (const rawLine of dataLines) {
+    const unwrapped = unwrapLine(rawLine);
+    const fields = parseCSVLine(unwrapped);
+    if (fields.length < 13) continue;
 
     const id = fields[0].trim();
     const edrpou = fields[1].trim();
     const name = fields[2].trim();
-    const address = fields[6].trim();
+    const contractAmount = parseFloat(fields[10]) || 0;
 
-    if (entityMap.has(id)) continue; // Keep first occurrence
+    if (entityMap.has(id)) continue;
 
-    const oblast = normalizeOblast(address.split(",")[0] || "");
-    const city = extractCity(address);
+    // Parse divisions JSON to get address
+    let address = "";
+    let oblast = "";
+    let city = "";
 
-    entityMap.set(id, { id, edrpou, name, address, oblast, city });
+    try {
+      const divisionsJson = fields[12].trim();
+      const divisions: Division[] = JSON.parse(divisionsJson);
+      if (divisions.length > 0) {
+        address = divisions[0].division_adresses || "";
+        oblast = normalizeOblast(address.split(",")[0] || "");
+        city = extractCity(address);
+      }
+    } catch {
+      // If JSON parsing fails, try to extract address from raw text
+      const addrMatch = fields[12]?.match(/division_adresses["\s:]+([^"]+)/);
+      if (addrMatch) {
+        address = addrMatch[1];
+        oblast = normalizeOblast(address.split(",")[0] || "");
+        city = extractCity(address);
+      }
+    }
+
+    entityMap.set(id, { id, edrpou, name, address, oblast, city, contractAmount });
   }
 
   // Convert to LegalEntity with coordinates
