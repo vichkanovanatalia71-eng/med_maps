@@ -68,18 +68,20 @@ export const useStore = create<AppState>((set, get) => ({
   isLoaded: false,
 
   initialize: async () => {
-    // Load both data sources in parallel
-    const [csvResponse, executorsResponse] = await Promise.all([
-      fetch("/pmg_contracts_info.csv"),
+    // Load all data sources in parallel
+    const [entityResponse, divisionsResponse, executorsResponse] = await Promise.all([
+      fetch("/pmg-legal-entity-info.csv"),
+      fetch("/pmg-legal-entity-divisions-info.csv"),
       fetch("/executors.json"),
     ]);
 
-    const [csvText, executorsData] = await Promise.all([
-      csvResponse.text(),
+    const [entityCsv, divisionsCsv, executorsData] = await Promise.all([
+      entityResponse.text(),
+      divisionsResponse.text(),
       executorsResponse.json() as Promise<ExecutorData[]>,
     ]);
 
-    const legalEntities = parseRealFacilities(csvText);
+    const legalEntities = parseRealFacilities(entityCsv, divisionsCsv);
     const allSpecialities = getUniqueSpecialities(executorsData);
     const allCategories = getUniqueCategories(executorsData);
     const allPeriods = getUniquePeriods(executorsData);
